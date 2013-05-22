@@ -7,12 +7,14 @@
   (truncate (/ arg1 arg2)))
 
 (defun flatten (arr)
+  "Return the board configuration as a list in row-major order ('flattened' by a level)."
   (cond
     ((null arr) ())
     ((atom arr) `(,arr))
     (t (mapcan #'flatten arr))))
 
 (defun argmin (seq &key key)
+  "Return the element of SEQ with the minimal value according to KEY"
   (let ((min (funcall key (first seq)))
 	(res (first seq)))
     (loop for x in (subseq seq 1) do
@@ -22,21 +24,26 @@
     res))
 
 (defun manhattan-distance (config1 config2)
+  "Return the Manhattan distance between two configurations"
   (loop for i from 0 to (1- *n*)  sum
        (loop for x in (nth i config1) for j from 0 to (1- *n*) sum
 	    (+ (abs (- i (position-if #'(lambda (row) (member x row)) config2)))
 	       (abs (- j (position x (find-if #'(lambda (row) (member x row)) config2))))))))
 
 (defun in-bounds (x)
+  "Return T if number is in the allowed range of column indices, else NIL"
   (and (>= x 0) (< x *n*)))
 
 (defmacro xor (a b)
+  "Return T iff one of the two arguments is true"
   `(and (or ,a ,b) (not (and ,a ,b))))
 
 (defun divmod (x y)
+  "Return two values: the integer division and modulo of the two arguments."
   (values (int/ x y) (mod x y)))
 
 (defun neighbors (config)
+  "Return a list of the board configurations accessible in one move."
   (multiple-value-bind (row col) (divmod (position 0 (flatten config)) *n*)
     (let ((res nil))
       (loop for i from (1- row) to (1+ row) do
@@ -50,6 +57,7 @@
       res)))
 
 (defun random-config-gen ()
+  "Return a randomly-generated board configuration."
   (let ((source (apply #'vector (loop for i from 0 to *size* collect i)))
 	(config (apply #'vector (loop for i from 0 to *size* collect i))))
     (loop for i from 1 to *size* do
@@ -59,26 +67,33 @@
     (loop for i from 0 to *size* by *n* collect (coerce (subseq config i (+ i *n*)) 'list))))
 
 (defun random-config ()
+  "Return a randomly-generated solvable board configuration."
  (do ((config (random-config-gen) (random-config-gen)))
      ((solvable-p config) config)))
 
 (defun goal-p (config)
+  "Return T if finished solving; NIL otherwise."
   (equal config *goal*))
 
 (defun best-of (configs)
+  "Return the configuration which is closest to being solved, measured by Manhattan distance."
   (if (null configs) nil
       (argmin configs :key #'distance-to-goal)))
 
 (defun distance-to-goal (config)
+  "Return Manhattan distance to goal configuration."
   (manhattan-distance config *goal*))
 
 (defun hill-climb (start &optional (max-steps 100))
+  "Perform a single hill-climb from a starting configuration."
   (do ((curr start (best-of (neighbors curr)))
        (i 0 (1+ i)))
       ((or (> i max-steps) (goal-p curr) (null curr))
        (values curr (distance-to-goal curr)))))
 
 (defun inversions (config)
+  "Return the number of inversions in the board configuration."
+  ;; Currently N^4 in time; can improve to be N^2logN
   (let* ((seq (remove-if #'zerop (flatten config)))
 	(end (1- (length seq))))
     (loop for x in seq for i from 0 to end sum
@@ -86,16 +101,19 @@
 	      count (and (< x y) (> i j))))))
 
 (defun solvable-p (config)
+  "Return T if board configuration is solvable; NIL otherwise."
   (if (oddp *n*)
       (evenp (inversions config))
       (oddp (+ (inversions config) (position-if #'(lambda (row) (member 0 row)) config)))))
 
 (defun hash-config (config)
+  "Return a hash function of the board configuration. May produce conflicts."
    (reduce #'+ (mapcar #'(lambda (x i) (expt x i))
 		       (flatten config)
 		       (loop for i from 0 to *size* collect i))))
 
 (defstruct state
+  "Contains a board configuration and its hash, pointer to prev state, and costs."
   (config nil)
   (prev-state nil)
   (g-cost nil)
@@ -104,6 +122,7 @@
   (hash nil))
 
 (defun make-new-state (config prev-state g-cost)
+  "Return a new state with a board configuration, previous config, and cost."
   (make-state :config config
 	      :prev-state prev-state
 	      :g-cost g-cost
@@ -112,6 +131,8 @@
 	      :hash (hash-config config)))
 
 (defun a-star-solve (start &optional (max-steps 500))
+  "Solve an 8-puzzle using A* search."
+  (if (not (solvable-p start)) (return-from a-star-solve nil))
   (let ((curr (make-new-state start nil 0))
 	(q (make-pq :key #'state-f-cost))
 	(open (make-hash-table))
@@ -133,15 +154,10 @@
 		 (state-f-cost curr)
 		 (state-hash curr)
 		 steps))
-    (list (state-config curr) steps)))	 
-
-(defun solve (&optional (max-steps 500))
-  (loop repeat max-steps do
-       (multiple-value-bind (config min) (hill-climb (random-config))
-	 (if (and (not (null config)) (zerop min))
-	     (return-from solve config)))))
+    (list (state-config curr) steps)))
 
 ;;;; Priority queue implementation from AIMA Lisp utils
+;;;; Mostly copied from http://aima.cs.berkeley.edu/lisp/utilities/queue.lisp
 (defstruct pq
   (key #'identity)
   (elements nil))
@@ -151,7 +167,7 @@
   (zerop (length (pq-elements pq))))
 
 (defun enqueue (pq items)
-  "Insert the items by priority according to the key function."
+  "Insert item into priority queue."
   (if (null (pq-elements pq)) (setf (pq-elements pq) (make-heap)))
   (if (atom items)
       (heap-insert (pq-elements pq) items (pq-key pq))
@@ -159,6 +175,7 @@
 	   (heap-insert (pq-elements pq) item (pq-key pq)))))
 
 (defun dequeue (pq)
+  "Remove and return the minimum element."
   (heap-extract-min (pq-elements pq) (pq-key pq)))
 
 (defun heap-val (heap i key)
@@ -214,5 +231,3 @@
 
 (defun make-heap (&optional (size 100))
   (make-array size :fill-pointer 0 :adjustable t))
-
-

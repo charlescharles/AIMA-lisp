@@ -1,0 +1,17 @@
+(defun a-star (&keyword start goal heuristic)
+  (let ((closed-set (make-set))
+	(open-set (make-heap (make-search-node start 0 (heuristic start))
+			 :key #'(lambda (node) (f-score (node-state node))))))
+    (loop while (not (is-empty open-set)) do
+	 (let ((current (heap-extract-min open-set)))
+	   (when (is-goal current)
+	     (return-from a-star (reconstruct-path current)))
+	   (set-add current closed-set)
+	   (loop for neighbor in (state-neighbors current)
+		(let ((g (+ (g-score current) (distance current neighbor)))
+		      (neighbor-node (heap-member open-set neighbor)))
+		  (when (not (set-member neighbor open-set))
+		    (heap-insert open-set (make-search-node neighbor g (heuristic neighbor))))
+		  (when (and (neighbor-node) (< g (g-score neighbor-node)))
+		    (setf (g-score neighbor-node g)))))))))
+	
